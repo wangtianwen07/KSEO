@@ -152,6 +152,14 @@
 
 证据边界：该快照没有完成候选与基线的热状态配对控制，未证明限频造成任何实测差异，也未证明散热、功耗或频率已经成为优化瓶颈。
 
+## 开关开启且输出一致，不代表目标并发路径被覆盖
+
+来源：轮次 `01a1a9a9-1fe3-7620-97b7-462964cc5aa7` 的基线 API 诊断输出。16 条请求全部完成，并发输出与关闭投机的串行参考一致，生成数量正确，prefix-wait 无错误；但 `prefix_wait_exercised=false`，总 `passed=false`。before、after_parallel、after_serial 三个快照均为 enabled=true、waits=0、resumed=0。候选队列记录 `SCREEN_QUEUE_EXITED_REVIEW_REQUIRED`，decisions 为空、formal_candidate=null，尚未据此否决候选。
+
+源码片段中的 hold 路径还受 draft、vision/constraint/background、shared/serial_only、候选 lane 状态、snapshot cut、grid 与共享 token 前缀等条件限制。因此相同前缀或功能开关开启，都不能替代实际进入等待/恢复分支的证据；本页没有证明本次究竟缺少哪一个触发条件。
+
+经验：先在基线上证明诊断负载触发目标路径，再用相同口径检查候选。分别记录请求完成、参考一致性、触发覆盖与路径错误；未触发时标为覆盖不足并修正负载，不降格为 PASS，也不据此认定实现错误或候选性能失败。修订后诊断应另留版本和产物，避免覆盖旧失败记录；缓存/共享前缀诊断耗时不计入冷前缀性能收益。
+
 ## 后续更新条件
 
 - 整批结束：补齐每条终态与原始产物身份，再记录批次结果。
