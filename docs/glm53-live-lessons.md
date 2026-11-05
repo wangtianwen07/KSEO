@@ -26,6 +26,14 @@
 
 来源产物定位（相对执行任务的产物根目录）：`discovery/longbench-long-output-partial-review-v1.json`、`accuracy-runs/baseline-new/longbench_v2/<sample_id>.attempt.json` 及对应 `.sse.jsonl.gz`。本页不填造未取得的文件 hash。
 
+## 源码存在重放路径，不代表当前请求正在重放
+
+补充来源：执行任务轮次 `01a1a973-e0e9-7560-8250-b2fd9deed6bd` 的阶段报告。任务报告确认源码存在“重排后重放旧 token、校验但不重复发送”的机制；同时明确当前请求是否处于该路径尚无直接证据。后续轮次 `01a1a975-82a9-7ca1-ab76-a1e24a3519be` 报告 LongBenchv2 已落盘 142/525、两个请求未结束，进程存活且 KV 池占用变化；该数字仅是当时快照。
+
+坑：以“没有新文本 + 源码有重放分支”直接断言当前正在重放，或以 KV 池变化证明某个请求的有效生成进度。源码可达性、服务活性、请求级因果证据必须分开。
+
+做法：需要同一请求的调度事件、重排/重放标记、旧 token 校验位置及时间关联才能判断具体状态。缺少这些事件时只记录“原因未确认”，不把推测写成根因，不重复发起同一 GPU 实验。
+
 ## 阶段报告中的优化失败与工程经验
 
 以下内容来自工作区 `artifacts/GLM53-KSEO-优化尝试汇总-20261105.md`，整理时文件 SHA256 为 `ccee049caeec34f92c543a6110bb948114cdcde2f296e07ec9120c93f0e7f72e`。此 hash 仅标识读取的汇总文件，不代替远端实测产物 hash；本页未独立重算该报告全部数据。原报告位于仓库外，公开读者不能仅靠本页复现实验。
@@ -66,7 +74,7 @@
 
 2026-11-05 在 Windows Python 3.11 上运行仓库全量测试，74 项测试收集/执行后报告 18 个 error，其中明确出现 `ModuleNotFoundError: No module named 'fcntl'`。README 要求 Linux；不能把 Windows 运行失败直接归因于优化候选。没有为绕过问题替换或禁用真实文件锁。
 
-切换 Ubuntu/WSL 后，README 的 pipeline、grid、agent 三个 CPU synthetic 示例均得到 `COMPLETED`。这是框架示例运行结果，不是模型性能或精度验收；也不能由三个示例推出全量测试通过。WSL 在 Windows 挂载目录上的全量测试另行执行，已有 pipeline 用例失败，具体原因尚未核定。
+切换 Ubuntu/WSL 后，README 的 pipeline、grid、agent 三个 CPU synthetic 示例均得到 `COMPLETED`。这是框架示例运行结果，不是模型性能或精度验收；也不能由三个示例推出全量测试通过。WSL 在 Windows 挂载目录上的全量测试执行 172 项，4 项失败：`test_crashed_kernel_workflow_is_cleaned_and_retried`、`test_layered_flow_reprofiles_and_audits_kernel`、`test_local_speedup_does_not_override_e2e_regression`、`test_agent_applies_patch_without_modifying_original`。前三项涉及 Kernel 工作流终态/最终分数，第四项最终分数不符，具体原因尚未核定；不能据此宣称当前框架全量验证通过。该轮测试包含主任务尚未提交的框架改动，并非仅测公开 HEAD。另行在 Linux 执行知识库相关的 26 项测试全部通过。
 
 经验：先匹配项目声明的平台再解释测试结果；跨平台验证同时记录解释器、工作目录/文件系统与失败用例。框架测试失败与真实 GPU 任务状态分别判断。
 
