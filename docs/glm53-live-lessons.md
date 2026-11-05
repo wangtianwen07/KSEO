@@ -162,6 +162,8 @@
 
 后续边界对照（同轮次）：主任务报告缓存边界为 64 token，旧 8192-token 提示在边界前修改尾部，无法形成合法共享快照；改为 8192 个完全相同 token 再加 1 个不同尾 token。最小检查输出为旧输入 `eligible_shared_cut=null, held=false`，新输入 `eligible_shared_cut=8192, held=true`。这说明诊断需要严格位于完整共同快照之后保留不同尾部，不能只检查“输入很长且大部分相同”。该输出是调度触发对照，尚非真实模型并发等待、恢复和输出正确性的验证；8193-token 真实诊断当时仅有启动 PID，结果待补。性能场景的 2K/8K 负载不随诊断修订而改变。
 
+真实重测闭环（同轮次后续输出）：新诊断总 `passed=true`，16 请求完成、并发输出与关闭投机的串行参考一致、生成数量正确，且 `prefix_wait_exercised=true`、无路径错误。prefix-wait 从 waits=0/resumed=0 变为 waits=7/resumed=7，restored_tokens=57344，timeouts、producer_lost、cancelled 均为 0，结束 waiting=0。该结果补齐本次基线负载中实际等待/恢复的覆盖；本页未独立重算原始请求，且有限负载通过不能外推取消、超时、producer 丢失等未发生分支，不能替代候选自身的并发验证或最终验收。wait_seconds 为累计等待计数，不用于推算端到端加速。
+
 ## 后续更新条件
 
 - 整批结束：补齐每条终态与原始产物身份，再记录批次结果。
