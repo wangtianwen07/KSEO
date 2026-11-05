@@ -70,6 +70,16 @@
 
 经验：镜像、源码、实际载入模块、编译产物与配置分别记录身份。源码比对不能抹平驱动、依赖或镜像差异；缓存隔离也不能替代实际加载产物核验。恢复脚本准备完毕与实际恢复验证分别留证。
 
+## Profiler 的内核累加、活动区间与关键路径分别计算
+
+补充来源：工作区 `artifacts/GLM53-推理瓶颈核对-20261105.md`（SHA256 `84bbab07699903137311c7f857b169de4a9cb83b4af6188bfa8d814d12487bfd`）、`artifacts/GLM53-profile-bottlenecks-verified-20261105.json`（SHA256 `67ef6177affb4151afe5f5cb0c88b1feb77e83ee4afa5731d65fe657f9371471`）。报告绑定既有 rank0 SQLite hash `f354d86c0a437e961fbfd5d5b55affe7510ad5660c858071a0c6524e96d0659b`；本页独立核对了本地 JSON 的分类加总及报告数字，未在此取得 SQLite 重算，不将报告身份提升为原始数据独立复现。
+
+观察：四个捕获范围中 MoE 占 GPU kernel duration 累加的约 40.26%—51.24%，MoE 与 Q4 合计 58.84%—66.24%。ShareGPT C1 近似 prefill 范围的通信内核累加约 18%，但按活动区间并集扣除与非通信内核重叠后，仅通信活动约占该 span 的 4.90%（2K）与 4.42%（8K）。无内核活动约为 0.143% 与 0.635%。
+
+坑：多 stream 的内核 duration 可以重叠，累加分母不等于 wall time；“仅通信活动”也不自动等于可消除关键路径。微小空闲间隙不能证明 CPU 无瓶颈，内核名称带 `dec_kernel` 也不能证明它只用于 decode。
+
+做法：同时报告 duration 累加、区间并集、阶段边界和 rank 覆盖。该报告只覆盖 rank0，近似 prefill 从首个 GPU kernel 到最后一个 prompt MoE kernel，不是精确 TTFT 边界；混合 prefill、投机验证和生成的范围不能直接归为 TPOT。热点排序可用于安排实验，带宽/计算屋顶和双 rank 因果关键路径仍需进一步证据，正式收益另用无插桩 E2E 对照验证。
+
 ## 本次整理独立验证的开发环境坑
 
 2026-11-05 在 Windows Python 3.11 上运行仓库全量测试，74 项测试收集/执行后报告 18 个 error，其中明确出现 `ModuleNotFoundError: No module named 'fcntl'`。README 要求 Linux；不能把 Windows 运行失败直接归因于优化候选。没有为绕过问题替换或禁用真实文件锁。
