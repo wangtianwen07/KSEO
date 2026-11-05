@@ -140,6 +140,10 @@
 
 因果边界：源码片段显示 benchmark 从 `KSEO_BASE_URL` 读取服务地址，有默认值；目前输出未证明失败子进程实际用了哪个值。连接拒绝只能证明当次目标连接未成功，尚不能单独归因为环境变量遗漏、服务退出或端口配置错误；修复后需重新核对健康身份及实际性能请求，不能仅凭脚本修改宣布恢复。
 
+后续恢复证据（轮次 `01a1a9a9-1fe3-7620-97b7-462964cc5aa7`）：新运行 `trials/b003-screen-pilot-v2/complete.json` 报告 `kind=measured`、`status=PERFORMANCE_PILOT_ONLY`、12 场景、126 请求、0 失败、`performance_targets_met=false`；原基线控制进程退出，候选队列转入 `BASELINE_SHARED_PREFIX_API_CHECK`。主任务此前报告修正了服务地址。该完成记录把恢复验证推进到实际性能请求层面，但本页未取得逐请求原始文件独立重算，亦未补造旧失败子进程的实际地址。
+
+经验补充：连接恢复、试测完成、性能达标、并发正确性和最终精度分别验收。零请求失败不等于性能达标；队列进入并发检查不等于该检查已通过。v1 失败与 v2 重跑分别留存，不能将失败阶段覆盖成从未发生。
+
 ## 当前限频标记与累计计数不能混读
 
 来源：轮次 `01a1a99e-a06b-77f0-a020-4ef07fcc9150` 的两机 NVSMI 输出，时间戳为 2026-11-05 10:52:17。快照中两机均为 P0、当前温度 81°C，SW Power Cap、SW Thermal Slowdown、HW Thermal Slowdown 均显示 `Not Active`；同一输出的 `Clocks Event Reasons Counters` 却包含非零 power/thermal 累计值。本页核对的是该次命令输出，没有新增硬件负载或修改频率/功耗。
