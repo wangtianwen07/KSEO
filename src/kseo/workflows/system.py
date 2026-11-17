@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from .. import optimizer, source, milestones
-from ..util import canonical, file_digest, write_json
+from ..util import KSEOError, canonical, file_digest, write_json
 from .pipeline import Pipeline
 
 
@@ -29,6 +29,9 @@ class SystemWorkflow:
         revision = source.freeze(runner.config, base, Path(runner.state["config_dir"]))
         runner.state["baseline_source_revision"] = revision
         runner.save()
+        if runner.config['optimizer'].get('rsi') and runner.config['mode'] == 'measured':
+            if source.git(base, 'rev-parse', 'HEAD^{tree}') != runner.config['validation']['rsi_seal']['stock_source_tree']:
+                raise KSEOError('RSI sealed stock 必须等于本任务冻结 TensorFold 基线 tree')
         retryable = {"INTERRUPTED", "DEPLOYMENT_FAILED", "EXECUTION_FAILED"}
         max_attempts = runner.config["budget"].get("max_attempts_per_candidate", 2)
         baselines = [trial for trial in runner.state["trials"] if trial["phase"] == "baseline"]

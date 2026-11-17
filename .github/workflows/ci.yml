@@ -32,3 +32,4 @@ jobs:
       - run: kseo demo --run-dir "$RUNNER_TEMP/kseo-grid"
       - run: kseo demo --agent --run-dir "$RUNNER_TEMP/kseo-agent"
       - run: kseo demo --pipeline --run-dir "$RUNNER_TEMP/kseo-pipeline"
+      - run: kseo rsi demo --run-dir "$RUNNER_TEMP/kseo-rsi"

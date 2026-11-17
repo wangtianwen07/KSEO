@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "target": "gb10",
+  "max_items": 12,
+  "urls": [
+    "https://github.com/ashhart/TensorFold/pull/1505",
+    "https://github.com/ashhart/TensorFold/pull/1534",
+    "https://github.com/ashhart/TensorFold/pull/2219",
+    "https://github.com/vllm-project/vllm/issues/55569",
+    "https://github.com/vllm-project/vllm/issues/58636",
+    "https://github.com/vllm-project/vllm/pull/55277"
+  ],
+  "queries": [
+    {"repo": "ashhart/TensorFold", "terms": "GLM GB10", "title_terms": ["GLM"]},
+    {"repo": "ashhart/TensorFold", "terms": "GLM Spark", "title_terms": ["GLM"]},
+    {"repo": "vllm-project/vllm", "terms": "\"GLM-5.3-Flash\" \"GB10\"", "title_terms": ["GLM"]}
+  ]
+}

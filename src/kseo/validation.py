@@ -144,6 +144,9 @@ def ingest_stage(path: Path, identity: dict, mode: str, stage: str, policy: dict
     result = {"checks": payload.get("checks", {}), "runtime": payload.get("runtime", {})}
     if not isinstance(result["checks"], dict) or not isinstance(result["runtime"], dict):
         raise KSEOError("checks 和 runtime 必须是对象")
+    if stage == 'preflight' and policy.get('gb10_devices'):
+        from .rsi.probe import validate_nodes
+        result['gb10'] = validate_nodes(result['runtime'].get('gb10_nodes'), policy['gb10_devices'])
     if stage == "benchmark":
         result.update(benchmark(payload, path.parent, policy))
     if stage == "profile" and "profile" in payload:
@@ -157,13 +160,16 @@ def ingest_stage(path: Path, identity: dict, mode: str, stage: str, policy: dict
     if stage == "final_accuracy":
         from .final_accuracy import evaluate
         result.update(evaluate(payload, path.parent, policy["final_accuracy"]))
+    if stage == 'rsi_seal':
+        from .rsi.seal import evaluate
+        result.update(evaluate(payload, path.parent, policy['rsi_seal'], identity))
     return result
 
 
 def gates(results: dict, policy: dict, stage: str | None = None, *, phase: str | None = None) -> list[dict]:
     decisions = []
     for gate in policy["gates"]:
-        if phase in ("baseline", "candidate") and gate["stage"] in ("final_accuracy", "multi_turn"):
+        if phase in ("baseline", "candidate") and gate["stage"] in ("rsi_seal", "final_accuracy", "multi_turn"):
             continue
         if phase in ("baseline", "candidate") and policy.get("milestones") and gate["stage"] == "benchmark" and not gate.get("always_required", False):
             continue

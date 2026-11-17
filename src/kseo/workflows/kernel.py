@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import shutil
 from pathlib import Path
 
 from .. import optimizer, source
@@ -12,6 +13,10 @@ from ..util import KSEOError, confined, digest, file_digest, finite, read_json, 
 
 class KernelRejected(KSEOError):
     """局部证据未通过，不能进入 System 集成。"""
+
+
+class KernelIntegrityError(KernelRejected):
+    """冻结输入遭到修改；整棵候选树停止，不能作为普通失败继续。"""
 
 
 def reference_manifest(directory: Path) -> dict:
@@ -31,6 +36,13 @@ class KernelWorkflow:
         self.runner = runner
 
     def propose(self, base: Path, hotspot: dict, directory: Path) -> dict | None:
+        if self.runner.config['optimizer'].get('rsi'):
+            from ..rsi.kernel_search import search
+            return search(self, base, hotspot, directory)
+        return self._once(base, hotspot, directory)
+
+    def _once(self, base: Path, hotspot: dict, directory: Path, *, parent=None, frozen=None,
+              search_context=None, minimum_speedup=None) -> dict | None:
         runner = self.runner
         config = runner.config
         settings = config["optimizer"]["kernel"]
@@ -40,8 +52,13 @@ class KernelWorkflow:
             phases[name] = status
             write_json(directory / "kernel_phases.json", phases)
         reference = directory / "oracle"
-        reference.mkdir()
+        if frozen is not None:
+            shutil.copytree(frozen / 'oracle', reference)
+        else:
+            reference.mkdir()
         base_revision = source.git(base, "rev-parse", "HEAD")
+        parent = parent or base
+        parent_revision = source.git(parent, 'rev-parse', 'HEAD')
         identity = {"run_id": runner.state["run_id"], "workflow_id": directory.name,
                     "source_revision": base_revision, "hotspot_id": hotspot["id"], "mode": config["mode"]}
         identity_path = directory / "identity.json"
@@ -58,8 +75,11 @@ class KernelWorkflow:
         runner.event("kernel_extract", hotspot=hotspot["id"], directory=str(directory.relative_to(runner.root)))
         mark("extract", "RUNNING")
         extraction = directory / "extraction.json"
-        execute(settings["extractor"], directory / "extract", variables,
-                {**env, "KSEO_KERNEL_PHASE": "extract", "KSEO_KERNEL_RESULT": str(extraction)}, remaining=runner.remaining())
+        if frozen is None:
+            execute(settings["extractor"], directory / "extract", variables,
+                    {**env, "KSEO_KERNEL_PHASE": "extract", "KSEO_KERNEL_RESULT": str(extraction)}, remaining=runner.remaining())
+        else:
+            write_json(extraction, {**read_json(frozen / 'extraction.json'), 'identity': identity})
         source.assert_unchanged(base, base_revision)
         result = read_json(extraction)
         if result.get("schema_version") != 1 or result.get("identity") != identity or result.get("kind") != config["mode"]:
@@ -77,28 +97,40 @@ class KernelWorkflow:
         mark("extract", "COMPLETED")
         frozen = reference_manifest(reference)
         fingerprint = digest(frozen)
+        extraction_sha = file_digest(extraction)
         write_json(directory / "oracle_manifest.json", {"files": frozen, "sha256": fingerprint, "cases": cases})
         mark("freeze_oracle", "COMPLETED")
         runner.event("kernel_oracle_frozen", hotspot=hotspot["id"], sha256=fingerprint)
         proposer_config = {**config, "optimizer": {**config["optimizer"], **settings["proposer"], "kind": "agent"}}
         mark("propose", "RUNNING")
-        proposal = optimizer.agent(proposer_config, runner.state, directory / "proposal", variables, env,
+        proposal = optimizer.agent(proposer_config, runner.state, directory / "proposal",
+                                   {**variables, 'source_dir': str(parent)}, {**env, 'KSEO_SOURCE_DIR': str(parent)},
                                    runner.remaining(), workflow={"lane": "kernel", "hotspot": hotspot,
                                                                 "oracle_dir": str(reference), "oracle_sha256": fingerprint,
-                                                                "cases": cases, "editable_files": editable})
+                                                                "cases": cases, "editable_files": editable,
+                                                                **({'search': search_context} if search_context else {})})
         if reference_manifest(reference) != frozen:
-            raise KernelRejected("Agent 修改了冻结 oracle，拒绝候选")
+            raise KernelIntegrityError("Agent 修改了冻结 oracle，拒绝候选")
+        if file_digest(extraction) != extraction_sha:
+            raise KernelIntegrityError('Agent 修改了冻结 Kernel 提取清单')
         source.assert_unchanged(base, base_revision)
+        source.assert_unchanged(parent, parent_revision)
         mark("propose", "COMPLETED" if proposal is not None else "NO_PROPOSAL")
         if proposal is None:
             return None
         if not proposal["patch"]:
             raise KernelRejected("Kernel 子流程必须返回可集成的源码 patch")
+        if search_context and proposal['parameters'] != (runner.state.get('best') or {'parameters': config['parameters']})['parameters']:
+            raise KernelRejected('RSI Kernel 树只修改源码，参数调优由 Configuration 完成')
         candidate = directory / "candidate-source"
-        revision = source.fork(base, candidate, proposal["patch"])
+        revision = source.fork(parent, candidate, proposal["patch"])
         modified = source.git(candidate, "diff", "--name-only", base_revision, revision).splitlines()
         if not modified or not set(modified) <= set(editable):
             raise KernelRejected("Kernel patch 修改了 editable_files 之外的文件或没有实际改动")
+        if search_context:
+            combined = directory / 'proposal' / 'integrated.diff'
+            source.export_patch(base, candidate, combined)
+            proposal['patch'] = combined
         identity = {**identity, "candidate_source_revision": revision,
                     "candidate_tree": source.git(candidate, "rev-parse", "HEAD^{tree}"),
                     "patch_sha256": file_digest(proposal["patch"]), "oracle_sha256": fingerprint}
@@ -114,7 +146,9 @@ class KernelWorkflow:
         if file_digest(proposal["patch"]) != identity["patch_sha256"]:
             raise KernelRejected("局部验证后 patch 内容发生变化")
         if reference_manifest(reference) != frozen:
-            raise KernelRejected("局部验证期间 oracle 被改动")
+            raise KernelIntegrityError("局部验证期间 oracle 被改动")
+        if file_digest(extraction) != extraction_sha:
+            raise KernelIntegrityError('局部验证期间 Kernel 提取清单被改动')
         measured = read_json(validation_path)
         if measured.get("schema_version") != 1 or measured.get("identity") != identity or measured.get("kind") != config["mode"]:
             raise KernelRejected("Kernel 局部验证身份或结果类型不匹配")
@@ -124,7 +158,7 @@ class KernelWorkflow:
                 or measured.get("checks", {}).get("numerics") is not True):
             raise KernelRejected("Kernel cases 未全部通过或实际路径未执行")
         speedup = finite(measured.get("speedup"), "Kernel speedup")
-        if speedup < settings.get("min_speedup", 1.0):
+        if speedup <= 0 or speedup < (settings.get("min_speedup", 1.0) if minimum_speedup is None else minimum_speedup):
             raise KernelRejected("Kernel 局部收益未达到要求")
         proposal["kernel_evidence"] = {"directory": str(directory.relative_to(runner.root)),
                                       "oracle_sha256": fingerprint, "speedup": speedup,

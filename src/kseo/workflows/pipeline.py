@@ -173,6 +173,9 @@ class Pipeline:
         if proposal.get("kernel_evidence") and status not in ("ACCEPTED", "VALID_NO_GAIN"):
             status = "LOCAL_PASS_E2E_REJECTED"
         attempt.update({"status": status, "trial": trial["id"], "kernel_evidence": proposal.get("kernel_evidence")})
+        if proposal.get('rsi_search'):
+            attempt['rsi_search'] = proposal['rsi_search']
+        attempt['reference_ids'] = proposal.get('reference_ids', [])
         write_json(runner.root / attempt["directory"] / "workflow.json", attempt)
         memory_path = runner.root / "learned-experience.json"
         memory = read_json(memory_path) if memory_path.exists() else {"schema_version": 1, "cards": []}
@@ -180,7 +183,9 @@ class Pipeline:
                                 "applies_to": {key: value for key, value in runner.config["context"].items() if key != "capabilities"},
                                 "observations": {"mode": runner.config["mode"], "lane": attempt["lane"],
                                                  "objective": trial.get("score"), "gates": trial["gates"], "acceptance_scope": trial.get("acceptance_scope"),
-                                                 "milestones": trial.get("milestones", [])},
+                                                 "milestones": trial.get("milestones", []),
+                                                 'rsi_search': proposal.get('rsi_search'),
+                                                 'reference_ids': proposal.get('reference_ids', [])},
                                 "provenance": {"trial": trial["directory"], "contract_sha256": runner.state["contract_sha256"]}}
         memory["cards"] = [row for row in memory["cards"] if row["id"] != trial["id"]] + [card]
         write_json(memory_path, memory)

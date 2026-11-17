@@ -8,7 +8,7 @@ from typing import Any
 
 from .util import KSEOError, canonical, finite, positive_int, read_json
 
-STAGES = ("preflight", "build", "deploy", "smoke", "profile", "benchmark", "quality", "api", "stability", "multi_turn", "final_accuracy")
+STAGES = ("preflight", "build", "deploy", "smoke", "profile", "benchmark", "quality", "api", "stability", "rsi_seal", "multi_turn", "final_accuracy")
 OPS = ("<", "<=", ">", ">=", "==", "!=")
 
 
@@ -65,6 +65,14 @@ def validate(config: dict[str, Any]) -> dict[str, Any]:
     if config["mode"] == "measured" and ("preflight" not in names or not config.get("cleanup")):
         raise KSEOError("measured 模式要求 preflight 和幂等 cleanup adapter")
     validation = config["validation"]
+    if 'rsi_seal' in names or 'rsi_seal' in validation:
+        from .rsi.seal import validate_policy
+        if 'rsi_seal' not in names or 'rsi_seal' not in validation or not config.get('final_validation', True):
+            raise KSEOError('rsi_seal 需要最终独立阶段和冻结策略')
+        validate_policy(validation['rsi_seal'])
+        if not any(g.get('stage') == 'rsi_seal' and g.get('field') == 'rsi_seal.passed'
+                   and g.get('op') == '==' and g.get('value') is True for g in validation.get('gates', [])):
+            raise KSEOError('rsi_seal 必须配置 passed == true 硬门禁')
     if validation.get('quality_generation'):
         from .generation import validate_generation, output_budget
         from .final_accuracy import _sha
@@ -186,6 +194,8 @@ def validate(config: dict[str, Any]) -> dict[str, Any]:
         raise KSEOError("resources.keys 需要明确的资源锁标识；GPU 推荐使用 host:GPU-UUID")
     if config["mode"] == "measured" and (not config.get("final_validation", True)):
         raise KSEOError("measured 模式必须执行最终复验")
+    from .rsi import validate as validate_rsi
+    validate_rsi(config)
     canonical(config)
     return config
 

@@ -70,6 +70,8 @@ def parser() -> argparse.ArgumentParser:
     ingest = sub.add_parser("ingest", help="将明确列出的历史材料导入为待审经验")
     ingest.add_argument("paths", nargs="+", type=Path)
     ingest.add_argument("--out", required=True, type=Path)
+    from .rsi.cli import add_parser
+    add_parser(sub)
     return result
 
 
@@ -82,7 +84,7 @@ def audit(task_path: Path, directory: Path) -> dict:
     identity = read_json(directory / "identity.json")
     if identity.get("contract_sha256") != digest(config):
         raise KSEOError("任务合同与实验 identity 不符")
-    if (config["validation"].get("final_accuracy") or config["validation"].get("multi_turn") or config["validation"].get("milestones")) and identity.get("phase") != record.get("phase"):
+    if (config["validation"].get("rsi_seal") or config["validation"].get("final_accuracy") or config["validation"].get("multi_turn") or config["validation"].get("milestones")) and identity.get("phase") != record.get("phase"):
         raise KSEOError("实验 phase 与 identity 不符，不能跳过最终精度门禁")
     from .source import assert_unchanged
     assert_unchanged(directory / "source", identity["source_revision"])
@@ -117,7 +119,12 @@ def audit(task_path: Path, directory: Path) -> dict:
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
-        if args.command == 'roles':
+        if args.command == 'rsi':
+            from .rsi.cli import dispatch
+            value = dispatch(args)
+            print(json.dumps(value, ensure_ascii=False, indent=2))
+            return 0 if value.get('status') in (None, 'COMPLETED', 'REFERENCE_ONLY', 'READY_FOR_RUN', 'READY_TO_BOOTSTRAP') else 2
+        elif args.command == 'roles':
             from .roles import catalog
             print(json.dumps(catalog(), ensure_ascii=False, indent=2))
         elif args.command in ("defaults", "prepare", "doctor"):

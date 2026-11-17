@@ -14,6 +14,8 @@ KSEO 参考 GEAK 的 System 与 Kernel 分层设计，组织端到端推理优�
 
 当前提供标准化瓶颈与 Amdahl 排序、配置优先搜索、Scheduling 提案、独立 Kernel oracle 与局部验证、可逆集成、E2E 门禁、恢复和交付包。
 
+GB10 RSI 扩展新增 PR/Issue 参考快照、带失败反馈的 UCT Kernel 候选树、成本上限排序、最终成对计时与逐 token 审计，以及可回放的实测经验导出。范围为 DGX Spark GB10 + TensorFold Native + GLM-5.3-Flash；见 [GB10 RSI 使用与接入协议](docs/gb10-rsi.md)。`kseo rsi demo --run-dir ./runs/rsi-cpu` 可运行完整 CPU synthetic 示例，不代表 GPU 性能收益。
+
 优化真实模型时，你需要提供模型路径、基础源码、基础镜像、可用服务器或集群、优化目标等信息。Agent 再根据这些信息准备环境、启动服务、分析性能、修改代码和运行测试。当前已提供优化流程和接入接口，实际执行脚本还需要由 Agent 根据具体平台接通。
 
 示例 Prompt（模型、资源及目标数值按每次任务提供，以下示例约定 1K=1024）：

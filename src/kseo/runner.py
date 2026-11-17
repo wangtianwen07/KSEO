@@ -147,7 +147,7 @@ class Runner:
             self.save()
             for step in self.config["steps"]:
                 stage = step["name"]
-                if stage in ("multi_turn", "final_accuracy") and phase != "final":
+                if stage in ("rsi_seal", "multi_turn", "final_accuracy") and phase != "final":
                     continue
                 record["stage"] = stage
                 self.save()
@@ -277,6 +277,11 @@ class Runner:
         variables = {"config_dir": self.state["config_dir"], "package_dir": str(Path(__file__).parent), "python": sys.executable}
         paths = set(Path(__file__).parent.rglob("*.py"))
         paths.update(Path(__file__).parent.joinpath("data").glob("*.json"))
+        from .rsi import input_paths
+        for input_path in input_paths(self.config, Path(self.state['config_dir'])):
+            if not input_path.is_file():
+                raise KSEOError('RSI 冻结参考/经验输入不存在: ' + str(input_path))
+            paths.add(input_path)
         commands = []
         def collect(value):
             if isinstance(value, dict):
@@ -315,6 +320,14 @@ class Runner:
                  f"- 保守 GPU 小时估算：{self.state['elapsed_seconds'] * self.config['resources'].get('gpu_count', 0) / 3600:.6f}", ""]
         if self.config["mode"] != "measured":
             lines += ["本次为 synthetic 示例或历史 replay，不代表真实模型的新实测收益。", ""]
+        if self.config['optimizer'].get('rsi'):
+            lines += [f"RSI Kernel 候选调用：{self.state.get('rsi_budget', {}).get('kernel_evaluations', 0)}；失败和中断均计入预算。", '']
+        if self.config['validation'].get('rsi_seal'):
+            final = next((t for t in self.state['trials'] if t['id'] == self.state.get('final_trial')), {})
+            seal = final.get('results', {}).get('rsi_seal', {})
+            lines += [f"最终 RSI 审计：{'PASS' if seal.get('passed') else 'NOT_PASSED'}；"
+                      f"成对收益下界：{seal.get('timing', {}).get('lower_95', 'NOT_RUN')}；"
+                      f"逐 token 审计：{'PASS' if seal.get('token_forcing', {}).get('passed') else 'NOT_PASSED'}。", '']
         lines += ["| 实验 | 阶段 | 结果 | objective |", "| --- | --- | --- | --- |"]
         for trial in self.state["trials"]:
             lines.append(f"| {trial['id']} | {trial['phase']} | {trial['status']} | {trial.get('score', '')} |")

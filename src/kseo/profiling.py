@@ -22,14 +22,18 @@ def normalize(profile: dict) -> dict:
         if row.get("kind") not in KINDS:
             raise KSEOError("热点 kind 必须为 kernel、scheduling、communication 或 host")
         share = finite(row.get("share"), "hotspot.share")
-        speedup = finite(row.get("achievable_speedup", 1), "hotspot.achievable_speedup")
+        ceiling = {}
+        if 'cost' in row:
+            from .rsi.ceiling import estimate
+            ceiling = estimate(row['cost'])
+        speedup = finite(ceiling.get('achievable_speedup', row.get("achievable_speedup", 1)), "hotspot.achievable_speedup")
         if not 0 <= share <= 1 or speedup < 1:
             raise KSEOError("share 必须在 [0,1]，achievable_speedup 必须 >= 1")
         if type(row.get("editable", False)) is not bool:
             raise KSEOError("hotspot.editable 必须是 boolean")
         # Amdahl 只用于预算和路由排序，最终收益始终由 E2E 实测决定。
         saved_fraction = share * (1 - 1 / speedup)
-        normalized.append({**row, "share": share, "achievable_speedup": speedup,
+        normalized.append({**row, **({'ceiling': ceiling} if ceiling else {}), "share": share, "achievable_speedup": speedup,
                            "expected_saved_fraction": saved_fraction,
                            "estimated_e2e_speedup": 1 / (1 - saved_fraction) if saved_fraction < 1 else None})
     if profile["scope"] == "critical_path" and sum(row["share"] for row in normalized) > 1 + 1e-9:
